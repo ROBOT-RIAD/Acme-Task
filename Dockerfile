@@ -8,5 +8,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY synthetic_field_prototype.py .
 COPY synthetic_generator.py .
+COPY core ./core
 
 CMD ["python", "synthetic_field_prototype.py"]

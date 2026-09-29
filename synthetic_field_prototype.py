@@ -16,93 +16,11 @@ import numpy as np
 from shapely.geometry import Polygon
 
 from synthetic_generator import generate_synthetic_video
-
-CONFIG = {
-    "video_path": "synthetic_pitch_feed.mp4",
-    "target_fps": 30,
-    "confidence_threshold": 0.5,
-    "field_detector": {
-        "type": "sam_mask_v1",
-        "sport": "football",
-        "min_area": 1000,
-    },
-    "crop_search": {
-        "aspect_ratio": "16:9",
-        "padding_px": 20,
-    },
-    "debug_mode": True,
-}
-
-
-
-MOCK_API_URL = os.getenv(
-    "MOCK_API_URL",
-    "http://localhost:5000",
+from core.config import CONFIG
+from core.reporting import (
+    report_event,
+    report_progress,
 )
-
-REPORT_TIMEOUT = 5
-
-
-
-def report_progress(processed_frames: int,total_frames: int):
-
-    if total_frames <= 0:
-        progress = 0.0
-    else:
-        progress = processed_frames / total_frames
-    progress = min(max(progress, 0.0), 1.0)
-    payload = {
-        "progress": round(progress, 4),
-        "processed_frames": processed_frames,
-        "total_frames": total_frames,
-    }
-    url = f"{MOCK_API_URL}/api/v1/jobs/progress"
-    try:
-        response = requests.post(
-            url,
-            json=payload,
-            timeout=REPORT_TIMEOUT,
-        )
-        response.raise_for_status()
-        print(
-            f"[reporting] progress "
-            f"{processed_frames}/{total_frames} "
-            f"({progress * 100:.1f}%)"
-        )
-    except requests.RequestException as exc:
-        print(
-            f"[reporting] progress report failed: {exc}"
-        )
-
-
-
-
-def report_event(status: str,**data,):
-    payload = {
-        "status": status,
-        **data,
-    }
-    url = f"{MOCK_API_URL}/api/v1/jobs/events"
-    try:
-        response = requests.post(
-            url,
-            json=payload,
-            timeout=REPORT_TIMEOUT,
-        )
-
-        response.raise_for_status()
-
-        print(
-            f"[reporting] event sent: {payload}"
-        )
-
-    except requests.RequestException as exc:
-        print(
-            f"[reporting] event report failed: {exc}"
-        )
-
-
-
 
 
 
