@@ -6,8 +6,11 @@ computing camera crop layouts across video feeds.
 
 DO NOT USE IN PRODUCTION.
 """
-
+import os
+import requests
 import time
+
+
 import cv2
 import numpy as np
 from shapely.geometry import Polygon
@@ -31,6 +34,79 @@ CONFIG = {
 }
 
 
+
+MOCK_API_URL = os.getenv(
+    "MOCK_API_URL",
+    "http://localhost:5000",
+)
+
+REPORT_TIMEOUT = 5
+
+
+
+def report_progress(processed_frames: int,total_frames: int):
+
+    if total_frames <= 0:
+        progress = 0.0
+    else:
+        progress = processed_frames / total_frames
+    progress = min(max(progress, 0.0), 1.0)
+    payload = {
+        "progress": round(progress, 4),
+        "processed_frames": processed_frames,
+        "total_frames": total_frames,
+    }
+    url = f"{MOCK_API_URL}/api/v1/jobs/progress"
+    try:
+        response = requests.post(
+            url,
+            json=payload,
+            timeout=REPORT_TIMEOUT,
+        )
+        response.raise_for_status()
+        print(
+            f"[reporting] progress "
+            f"{processed_frames}/{total_frames} "
+            f"({progress * 100:.1f}%)"
+        )
+    except requests.RequestException as exc:
+        print(
+            f"[reporting] progress report failed: {exc}"
+        )
+
+
+
+
+def report_event(status: str,**data,):
+    payload = {
+        "status": status,
+        **data,
+    }
+    url = f"{MOCK_API_URL}/api/v1/jobs/events"
+    try:
+        response = requests.post(
+            url,
+            json=payload,
+            timeout=REPORT_TIMEOUT,
+        )
+
+        response.raise_for_status()
+
+        print(
+            f"[reporting] event sent: {payload}"
+        )
+
+    except requests.RequestException as exc:
+        print(
+            f"[reporting] event report failed: {exc}"
+        )
+
+
+
+
+
+
+
 class FieldBoundaryAnalyzer:
     def __init__(self, config: dict):
         self.config = config
@@ -45,8 +121,17 @@ class FieldBoundaryAnalyzer:
             print("Error: Could not open video stream.")
             return
 
+        total_frames = int(
+            cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        )
+
         frame_count = 0
         detected_polygons = []
+
+        report_progress(
+            processed_frames=0,
+            total_frames=total_frames,
+        )
 
         while True:
             ret, frame = cap.read()
@@ -70,12 +155,14 @@ class FieldBoundaryAnalyzer:
         print(f"Processed {frame_count} frames. Found {len(detected_polygons)} boundaries.")
         return detected_polygons
 
+
     def _extract_mask(self, frame: np.ndarray) -> np.ndarray:
         # Dummy mask generation based on green color thresholding
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         lower_green = np.array([35, 40, 40])
         upper_green = np.array([85, 255, 255])
         return cv2.inRange(hsv, lower_green, upper_green)
+
 
     def _derive_polygon_from_mask(self, mask: np.ndarray):
         try:
@@ -91,13 +178,94 @@ class FieldBoundaryAnalyzer:
         return None
 
 
-def run_pipeline():
-    # Helper to generate input file if it doesn't exist locally
-    generate_synthetic_video(CONFIG["video_path"])
+def get_video_frame_count(video_path: str,) -> int:
+    cap = cv2.VideoCapture(
+        video_path
+    )
 
-    analyzer = FieldBoundaryAnalyzer(CONFIG)
-    results = analyzer.process_video(CONFIG["video_path"])
-    print(f"Pipeline finished with {len(results) if results else 0} results.")
+    if not cap.isOpened():
+        raise RuntimeError(
+            f"Could not open video: "
+            f"{video_path}"
+        )
+
+    total_frames = int(
+        cap.get(
+            cv2.CAP_PROP_FRAME_COUNT
+        )
+    )
+
+    cap.release()
+
+    return total_frames
+
+
+
+def run_pipeline():
+    """
+    Execute the complete synthetic processing pipeline.
+    """
+
+    start_time = time.time()
+    report_event("started",message="Pipeline started",)
+
+    try:
+        print(
+            "Generating synthetic video..."
+        )
+        generate_synthetic_video(outputPath=CONFIG["video_path"])
+
+        total_frames = (
+                    get_video_frame_count(
+                        CONFIG["video_path"]
+                    )
+                )
+        
+        analyzer = FieldBoundaryAnalyzer(CONFIG)
+
+        results = analyzer.process_video(CONFIG["video_path"])
+        report_progress(
+                    processed_frames=total_frames,
+                    total_frames=total_frames,
+                )
+        result_count = (len(results)if results else 0)
+
+        duration = (time.time() - start_time)
+
+        report_event(
+            "completed",
+            message="Pipeline completed successfully",
+            processed_frames=1800,
+            boundaries_detected=result_count,
+            duration_seconds=round(
+                duration,
+                3,
+            ),
+        )
+
+        print(
+            f"Pipeline finished with "
+            f"{result_count} results."
+        )
+
+    except Exception as exc:
+        duration = (
+            time.time() - start_time
+        )
+        print(
+            f"Pipeline failed: {exc}"
+        )
+        report_event(
+            "failed",
+            message="Pipeline failed",
+            error=str(exc),
+            duration_seconds=round(
+                duration,
+                3,
+            ),
+        )
+        raise
+
 
 
 if __name__ == "__main__":
