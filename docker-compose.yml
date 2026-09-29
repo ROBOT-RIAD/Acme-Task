@@ -3,12 +3,24 @@ services:
     build: ./mock_api
     ports:
       - "5000:5000"
+    networks:
+      - app_network
+    restart: unless-stopped
 
   # Add your own service here once you've built your solution, e.g.:
-  #
-  # runner:
-  #   build: .
-  #   depends_on:
-  #     - mock_api
-  #   environment:
-  #     - MOCK_API_URL=http://mock_api:5000
+  
+  runner:
+    build: .
+    depends_on:
+      - mock_api
+    environment:
+      - MOCK_API_URL=http://mock_api:5000
+    networks:
+      - app_network
+    restart: "no"
+
+
+
+networks:
+  app_network:
+    driver: bridge
