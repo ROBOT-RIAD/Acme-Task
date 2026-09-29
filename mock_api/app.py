@@ -7,6 +7,14 @@ app = Flask(__name__)
 _events = []
 
 
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({
+        "message": "Welcome to the Server",
+        "status": "running"
+    }), 200
+
+
 @app.route("/api/v1/jobs/progress", methods=["POST"])
 def report_progress():
     payload = request.get_json(force=True, silent=True) or {}
